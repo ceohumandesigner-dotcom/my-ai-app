@@ -16,14 +16,18 @@ else:
 st.title("🎯 AI 문제해결 역량 코치")
 st.markdown("현재 상태(As-Is)와 도달하고자 하는 목표(To-Be) 사이의 Gap을 좁히는 여정을 시작합니다.")
 
-# 2. 사이드바에 API 키 입력창 만들기
-with st.sidebar:
-    st.header("⚙️ 기본 설정")
-    api_key = st.text_input("Gemini API Key를 입력하세요", type="password")
-    st.markdown("[👉 내 API 키 확인하러 가기](https://aistudio.google.com/app/apikey)")
+# # 2. 사이드바 설정 (자동 마스터 키 적용)
+try:
+    # 스트림릿 클라우드에 숨겨둔 비밀 키를 자동으로 불러옵니다.
+    api_key = st.secrets["GEMINI_API_KEY"]
+except:
+    # (내 컴퓨터 로컬에서 테스트할 때용) 클라우드에 키가 없을 때만 직접 입력
+    with st.sidebar:
+        st.header("⚙️ 개발자 설정")
+        api_key = st.text_input("Gemini API Key를 입력하세요", type="password")
 
 if not api_key:
-    st.warning("👈 앱을 시작하려면 왼쪽 사이드바에 API 키를 먼저 입력해 주세요.")
+    st.warning("⚠️ API 키가 설정되지 않았습니다. 스트림릿 클라우드 Secrets 설정을 확인해 주세요.")
     st.stop()
 
 genai.configure(api_key=api_key)

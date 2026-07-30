@@ -2,7 +2,7 @@ import streamlit as st
 import google.generativeai as genai
 import glob
 
-# 1. 화면 설정 및 에러 방지용 강제 초기화 버튼
+# 1. 화면 설정 및 초기화 버튼
 st.set_page_config(page_title="AI 문제해결 역량 코치", page_icon="🎯")
 
 if st.button("🔄 에러 발생 시 여기를 눌러 화면/기억을 강제 초기화하세요"):
@@ -17,7 +17,7 @@ else:
     st.title("🎯 문제해결도움 AI코치")
 st.markdown("현재 상태(As-Is)와 도달하고자 하는 목표(To-Be) 사이의 Gap을 좁히는 여정을 시작합니다.")
 
-# 3. 안전한 키 연동 
+# 3. 안전한 키 연동
 try:
     api_key = st.secrets["GEMINI_API_KEY"]
 except:
@@ -29,16 +29,18 @@ if not api_key:
 
 genai.configure(api_key=api_key.strip())
 
-# [핵심 진단] 구글 서버에 접속해서 '사용 가능한 진짜 이름'을 캐냅니다.
+# 4. [신규 기능] 사용 가능한 모든 모델 불러오기 및 사이드바 선택기
 try:
-    # generateContent(채팅)가 가능한 gemini 모델만 싹 다 긁어옵니다.
-    valid_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods and 'gemini' in m.name]
-    st.success(f"✅ [진단 통과] 서버 연결 완료! (사용 가능 모델 확인됨)")
+    valid_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
 except Exception as e:
     st.error(f"❌ [진단 실패] 통신 에러 발생! 원인: {e}")
     st.stop()
 
-# 4. 소장님의 완벽한 시스템 프롬프트
+# 화면 왼쪽에 모델을 마음대로 바꿀 수 있는 메뉴를 만듭니다!
+selected_model = st.sidebar.selectbox("🤖 작동하는 AI 모델을 선택하세요", valid_models)
+st.sidebar.markdown("👉 **채팅 중 에러가 나면, 여기서 다른 모델(예: gemini-1.5-pro 등)로 바꿔서 바로 테스트해 보세요!**")
+
+# 5. 소장님의 완벽한 시스템 프롬프트
 system_instruction = """
 **[Role & Persona]**
 너는 인재 평가 및 성장을 돕는 최고 수준의 '문제해결 도움 AI코치'이자 'AI 기술 활용 전문가'야.
@@ -65,7 +67,7 @@ system_instruction = """
 
 * Step 2: Gap 발생의 원인 진단 (통제권 확보)
    a. 그 Gap이 발생한 원인을 탐색하게 해. (답변 대기)
-   b. 환경, 타인 등 통제할 수 없는 외부 요인은 걸러내고, '내담자 스스로 통제하고 바꿀 수 있는 내부 요인(핵심 병목)'이 무엇인지 찾아보도록 유도해. (답변 대기)
+   b. 환경, 타인 등 통제할 수 없는 외부 요인은 걸러내고, 단기적인 방산/항공우주 시황 등 통제 불가능한 요인은 배제하며, '내담자 스스로 통제하고 바꿀 수 있는 내부 요인(핵심 병목)'이 무엇인지 찾아보도록 유도해. (답변 대기)
 
 * Step 3: 브리지 설계 (대안 도출 및 AI 솔루션 적용)
    a. 과거의 방식에서 벗어나, 시간/비용 등의 제약이 없다면 당장 시도해 볼 수 있는 창의적인 대안을 3가지 정도 브레인스토밍하도록 유도해. (답변 대기) (이때 내담자가 AI 활용 방안을 묻거나 막혀하면, 실행 가능한 AI 툴/프롬프트 솔루션을 즉시 제시해 준다.)
@@ -80,29 +82,26 @@ system_instruction = """
 "안녕하세요. 저는 당신이 가진 자원을 최적으로 활용하여 구체적인 행동으로 원하는 바를 이룰 수 있도록 돕는 문제해결도움 AI코치입니다. 필요시 실질적인 AI 활용 솔루션도 함께 안내해 드립니다. 지금 어떤 답답한 상황을 마주하고 계시거나 돌파하고 싶은 문제가 있으신가요? 편안하게 이야기해 주세요."
 """
 
-# 5. AI 모델 세팅 (★자동 타겟팅 기술 적용★)
-if "messages" not in st.session_state:
-    st.session_state.messages = []
+# 6. AI 모델 세팅 (선택한 모델 적용 및 초기화 로직)
+if "current_model" not in st.session_state or st.session_state.current_model != selected_model:
+    st.session_state.current_model = selected_model
     
-if "chat_session" not in st.session_state:
-    # 이름표를 하드코딩하지 않고, 구글이 방금 알려준 첫 번째 진짜 이름을 그대로 집어넣습니다.
-    target_model_name = valid_models[0] if valid_models else "gemini-1.5-flash"
-    
+    # 사이드바에서 모델을 바꿀 때마다 대화 세션도 깨끗하게 새로 시작합니다.
     model = genai.GenerativeModel(
-        model_name=target_model_name,
+        model_name=selected_model,
         system_instruction=system_instruction
     )
     st.session_state.chat_session = model.start_chat(history=[])
     
     welcome_message = "안녕하세요. 저는 당신이 가진 자원을 최적으로 활용하여 구체적인 행동으로 원하는 바를 이룰 수 있도록 돕는 문제해결도움 AI 코치입니다. 필요시 실질적인 AI 활용 솔루션도 함께 안내해 드립니다. 지금 어떤 답답한 상황을 마주하고 계시거나 돌파하고 싶은 과제가 있으신가요? 편안하게 이야기해 주세요."
-    st.session_state.messages.append({"role": "assistant", "content": welcome_message})
+    st.session_state.messages = [{"role": "assistant", "content": welcome_message}]
 
-# 6. 이전 대화 화면 출력
+# 7. 이전 대화 화면 출력
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-# 7. 사용자 입력 및 AI 답변 생성
+# 8. 사용자 입력 및 AI 답변 생성
 if prompt := st.chat_input("여기에 답변을 입력하세요..."):
     with st.chat_message("user"):
         st.markdown(prompt)
@@ -114,4 +113,4 @@ if prompt := st.chat_input("여기에 답변을 입력하세요..."):
             st.markdown(response.text)
             st.session_state.messages.append({"role": "assistant", "content": response.text})
         except Exception as e:
-            st.error(f"🚨 앗! 통신 에러가 발생했습니다: {e}")
+            st.error(f"🚨 이 모델({selected_model})은 현재 권한이 없습니다. 화면 좌측 상단의 화살표(>)를 눌러 사이드바를 열고, 다른 모델로 변경해 보세요! (에러원인: {e})")

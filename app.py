@@ -2,8 +2,12 @@ import streamlit as st
 import google.generativeai as genai
 import glob
 
-# 1. 화면 기본 디자인 설정
+# 1. 화면 설정 및 에러 방지용 강제 초기화 버튼
 st.set_page_config(page_title="AI 문제해결 역량 코치", page_icon="🎯")
+
+if st.button("🔄 에러 발생 시 여기를 눌러 화면/기억을 강제 초기화하세요"):
+    st.session_state.clear()
+    st.rerun()
 
 # 2. 이미지 및 타이틀 설정
 image_list = glob.glob("gap_image.*") + glob.glob("문제해결 ai코치.*")
@@ -13,27 +17,28 @@ else:
     st.title("🎯 문제해결도움 AI코치")
 st.markdown("현재 상태(As-Is)와 도달하고자 하는 목표(To-Be) 사이의 Gap을 좁히는 여정을 시작합니다.")
 
-# 3. API 키 연동
+# 3. 안전한 키 연동 
 try:
     api_key = st.secrets["GEMINI_API_KEY"]
 except:
     api_key = ""
 
 if not api_key:
-    st.warning("⚠️ API 키가 설정되지 않았습니다.")
+    st.warning("⚠️ API 키가 설정되지 않았습니다. Streamlit Secrets 설정을 확인해주세요.")
     st.stop()
 
 genai.configure(api_key=api_key.strip())
 
-# 🚨 [핵심 진단] API 키 및 서버 연결 상태 강제 확인
+# [핵심 진단] 구글 서버에 접속해서 '사용 가능한 진짜 이름'을 캐냅니다.
 try:
-    available_models = [m.name for m in genai.list_models()]
-    st.success("✅ [진단 통과] 구글 서버와 완벽하게 연결되었습니다! API 키가 정상입니다.")
+    # generateContent(채팅)가 가능한 gemini 모델만 싹 다 긁어옵니다.
+    valid_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods and 'gemini' in m.name]
+    st.success(f"✅ [진단 통과] 서버 연결 완료! (사용 가능 모델 확인됨)")
 except Exception as e:
     st.error(f"❌ [진단 실패] 통신 에러 발생! 원인: {e}")
-    st.stop() # 에러가 나면 여기서 앱을 멈춥니다.
+    st.stop()
 
-# 4. 시스템 프롬프트 (이하 동일)
+# 4. 소장님의 완벽한 시스템 프롬프트
 system_instruction = """
 **[Role & Persona]**
 너는 인재 평가 및 성장을 돕는 최고 수준의 '문제해결 도움 AI코치'이자 'AI 기술 활용 전문가'야.
@@ -75,13 +80,16 @@ system_instruction = """
 "안녕하세요. 저는 당신이 가진 자원을 최적으로 활용하여 구체적인 행동으로 원하는 바를 이룰 수 있도록 돕는 문제해결도움 AI코치입니다. 필요시 실질적인 AI 활용 솔루션도 함께 안내해 드립니다. 지금 어떤 답답한 상황을 마주하고 계시거나 돌파하고 싶은 문제가 있으신가요? 편안하게 이야기해 주세요."
 """
 
-# 5. AI 모델 세팅 및 채팅 로직
+# 5. AI 모델 세팅 (★자동 타겟팅 기술 적용★)
 if "messages" not in st.session_state:
     st.session_state.messages = []
     
 if "chat_session" not in st.session_state:
+    # 이름표를 하드코딩하지 않고, 구글이 방금 알려준 첫 번째 진짜 이름을 그대로 집어넣습니다.
+    target_model_name = valid_models[0] if valid_models else "gemini-1.5-flash"
+    
     model = genai.GenerativeModel(
-        model_name="gemini-1.5-flash",
+        model_name=target_model_name,
         system_instruction=system_instruction
     )
     st.session_state.chat_session = model.start_chat(history=[])
@@ -89,10 +97,12 @@ if "chat_session" not in st.session_state:
     welcome_message = "안녕하세요. 저는 당신이 가진 자원을 최적으로 활용하여 구체적인 행동으로 원하는 바를 이룰 수 있도록 돕는 문제해결도움 AI 코치입니다. 필요시 실질적인 AI 활용 솔루션도 함께 안내해 드립니다. 지금 어떤 답답한 상황을 마주하고 계시거나 돌파하고 싶은 과제가 있으신가요? 편안하게 이야기해 주세요."
     st.session_state.messages.append({"role": "assistant", "content": welcome_message})
 
+# 6. 이전 대화 화면 출력
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
+# 7. 사용자 입력 및 AI 답변 생성
 if prompt := st.chat_input("여기에 답변을 입력하세요..."):
     with st.chat_message("user"):
         st.markdown(prompt)
@@ -104,5 +114,4 @@ if prompt := st.chat_input("여기에 답변을 입력하세요..."):
             st.markdown(response.text)
             st.session_state.messages.append({"role": "assistant", "content": response.text})
         except Exception as e:
-            # 방어막을 벗기고 진짜 에러를 보여줍니다!
-            st.error(f"🚨 앗! 구글 서버에서 이런 에러를 뱉어냈습니다: {e}")
+            st.error(f"🚨 앗! 통신 에러가 발생했습니다: {e}")

@@ -2,12 +2,8 @@ import streamlit as st
 import google.generativeai as genai
 import glob
 
-# 1. 화면 설정 및 에러 방지용 강제 초기화 버튼
+# 1. 화면 기본 디자인 설정
 st.set_page_config(page_title="AI 문제해결 역량 코치", page_icon="🎯")
-
-if st.button("🔄 에러 발생 시 여기를 눌러 화면/기억을 강제 초기화하세요"):
-    st.session_state.clear()
-    st.rerun()
 
 # 2. 이미지 및 타이틀 설정
 image_list = glob.glob("gap_image.*") + glob.glob("문제해결 ai코치.*")
@@ -17,20 +13,27 @@ else:
     st.title("🎯 문제해결도움 AI코치")
 st.markdown("현재 상태(As-Is)와 도달하고자 하는 목표(To-Be) 사이의 Gap을 좁히는 여정을 시작합니다.")
 
-# 3. 안전한 키 연동 (보이지 않는 띄어쓰기 자동 제거 기능 추가!)
+# 3. API 키 연동
 try:
     api_key = st.secrets["GEMINI_API_KEY"]
 except:
     api_key = ""
 
 if not api_key:
-    st.warning("⚠️ API 키가 설정되지 않았습니다. Streamlit Secrets 설정을 확인해주세요.")
+    st.warning("⚠️ API 키가 설정되지 않았습니다.")
     st.stop()
 
-# strip()을 통해 키 앞뒤의 혹시 모를 공백을 깔끔하게 잘라냅니다.
 genai.configure(api_key=api_key.strip())
 
-# 4. 소장님의 완벽한 시스템 프롬프트
+# 🚨 [핵심 진단] API 키 및 서버 연결 상태 강제 확인
+try:
+    available_models = [m.name for m in genai.list_models()]
+    st.success("✅ [진단 통과] 구글 서버와 완벽하게 연결되었습니다! API 키가 정상입니다.")
+except Exception as e:
+    st.error(f"❌ [진단 실패] 통신 에러 발생! 원인: {e}")
+    st.stop() # 에러가 나면 여기서 앱을 멈춥니다.
+
+# 4. 시스템 프롬프트 (이하 동일)
 system_instruction = """
 **[Role & Persona]**
 너는 인재 평가 및 성장을 돕는 최고 수준의 '문제해결 도움 AI코치'이자 'AI 기술 활용 전문가'야.
@@ -72,13 +75,13 @@ system_instruction = """
 "안녕하세요. 저는 당신이 가진 자원을 최적으로 활용하여 구체적인 행동으로 원하는 바를 이룰 수 있도록 돕는 문제해결도움 AI코치입니다. 필요시 실질적인 AI 활용 솔루션도 함께 안내해 드립니다. 지금 어떤 답답한 상황을 마주하고 계시거나 돌파하고 싶은 문제가 있으신가요? 편안하게 이야기해 주세요."
 """
 
-# 5. AI 모델 세팅 (구글 서버가 100% 인식하는 공식 풀네임 적용)
+# 5. AI 모델 세팅 및 채팅 로직
 if "messages" not in st.session_state:
     st.session_state.messages = []
     
 if "chat_session" not in st.session_state:
     model = genai.GenerativeModel(
-        model_name="models/gemini-1.5-flash",
+        model_name="gemini-1.5-flash",
         system_instruction=system_instruction
     )
     st.session_state.chat_session = model.start_chat(history=[])
@@ -86,12 +89,10 @@ if "chat_session" not in st.session_state:
     welcome_message = "안녕하세요. 저는 당신이 가진 자원을 최적으로 활용하여 구체적인 행동으로 원하는 바를 이룰 수 있도록 돕는 문제해결도움 AI 코치입니다. 필요시 실질적인 AI 활용 솔루션도 함께 안내해 드립니다. 지금 어떤 답답한 상황을 마주하고 계시거나 돌파하고 싶은 과제가 있으신가요? 편안하게 이야기해 주세요."
     st.session_state.messages.append({"role": "assistant", "content": welcome_message})
 
-# 6. 이전 대화 화면 출력
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-# 7. 사용자 입력 및 AI 답변 생성 (빨간 에러창 방어막 씌움)
 if prompt := st.chat_input("여기에 답변을 입력하세요..."):
     with st.chat_message("user"):
         st.markdown(prompt)
@@ -103,4 +104,5 @@ if prompt := st.chat_input("여기에 답변을 입력하세요..."):
             st.markdown(response.text)
             st.session_state.messages.append({"role": "assistant", "content": response.text})
         except Exception as e:
-            st.error("앗! 구글 서버와 통신 중 엉킨 기억이 남아있습니다. 화면 맨 위에 있는 '🔄 강제 초기화' 버튼을 눌러서 기억을 지워주세요!")
+            # 방어막을 벗기고 진짜 에러를 보여줍니다!
+            st.error(f"🚨 앗! 구글 서버에서 이런 에러를 뱉어냈습니다: {e}")

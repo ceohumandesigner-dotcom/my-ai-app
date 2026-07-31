@@ -92,7 +92,7 @@ if "messages" not in st.session_state:
     
 if "chat_session" not in st.session_state:
     model = genai.GenerativeModel(
-        model_name="gemini-1.5-flash",
+        model_name="gemini-2.0-flash",
         system_instruction=system_instruction
     )
     st.session_state.chat_session = model.start_chat(history=[])
